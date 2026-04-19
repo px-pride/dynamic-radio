@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dynamic Radio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #0a0a0a;
+    color: #e0e0e0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .container { text-align: center; max-width: 800px; padding: 2rem; }
+  h1 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.15em; color: #666; margin-bottom: 2rem; }
+  .track { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.3rem; }
+  .artist { font-size: 1.1rem; color: #999; margin-bottom: 0.3rem; }
+  .album { font-size: 0.85rem; color: #666; font-style: italic; margin-bottom: 1.5rem; }
+  .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #444; margin-bottom: 0.2rem; margin-top: 1rem; }
+  .mood { font-size: 0.95rem; color: #888; }
+  .meta { font-size: 0.8rem; color: #555; margin-top: 0.3rem; }
+  .status { font-size: 0.75rem; color: #444; margin-top: 1.5rem; }
+  .tracklists { display: flex; gap: 2rem; margin-top: 1.5rem; text-align: left; }
+  @media (max-width: 500px) { .tracklists { flex-direction: column; gap: 1rem; } }
+  .tracklist { flex: 1; min-width: 0; }
+  .tracklist-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #444; margin-bottom: 0.5rem; }
+  .tracklist-item { font-size: 0.8rem; color: #777; padding: 0.25rem 0; border-bottom: 1px solid #1a1a1a; }
+  .tracklist-item .tl-name { color: #aaa; }
+  .tracklist-item .tl-artist { color: #666; }
+  #play-btn {
+    margin-top: 1.5rem;
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    border: 2px solid #555;
+    background: transparent;
+    color: #e0e0e0;
+    font-size: 1.3rem;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  #play-btn:hover { border-color: #999; color: #fff; }
+  #play-btn.playing { border-color: #4a9; color: #4a9; }
+  .volume-row {
+    display: flex; align-items: center; justify-content: center;
+    gap: 0.6rem; margin-top: 1rem;
+  }
+  .volume-row .vol-icon { font-size: 0.85rem; color: #555; user-select: none; }
+  .volume-row .vol-value { font-size: 0.75rem; color: #555; min-width: 2ch; text-align: right; }
+  #vol-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 140px; height: 4px;
+    background: #333; border-radius: 2px; outline: none;
+  }
+  #vol-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #888; cursor: pointer;
+    border: none;
+  }
+  #vol-slider::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #888; cursor: pointer; border: none;
+  }
+  #vol-slider:active::-webkit-slider-thumb { background: #4a9; }
+  #vol-slider:active::-moz-range-thumb { background: #4a9; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Dynamic Radio</h1>
+  <div class="track" id="track">Loading...</div>
+  <div class="artist" id="artist"></div>
+  <div class="album" id="album"></div>
+  <div class="label">Mood</div>
+  <div class="mood" id="mood"></div>
+  <div class="meta" id="meta"></div>
+  <audio id="player" preload="none"></audio>
+  <button id="play-btn" aria-label="Play">&#9654;</button>
+  <div class="volume-row">
+    <span class="vol-icon">&#128264;</span>
+    <input type="range" id="vol-slider" min="0" max="100" value="80">
+    <span class="vol-value" id="vol-value">80</span>
+  </div>
+  <div class="status" id="status"></div>
+  <div class="tracklists">
+    <div class="tracklist" id="upcoming-section" style="display:none">
+      <div class="tracklist-title">Up Next</div>
+      <div id="upcoming"></div>
+    </div>
+    <div class="tracklist" id="history-section" style="display:none">
+      <div class="tracklist-title">Recently Played</div>
+      <div id="history"></div>
+    </div>
+  </div>
+</div>
+<script>
+const host = location.hostname;
+const apiBase = location.origin;
+
+const player = document.getElementById("player");
+const btn = document.getElementById("play-btn");
+const volSlider = document.getElementById("vol-slider");
+const volValue = document.getElementById("vol-value");
+let volDragging = false;
+let volDebounce = null;
+let localVolTs = 0;  // timestamp of last local slider change
+
+volSlider.addEventListener("input", () => {
+  volDragging = true;
+  const target = Number(volSlider.value);
+  volValue.textContent = target;
+  localVolTs = Date.now();
+
+  // Instant client-side attenuation (mpv is always at 100)
+  player.volume = target / 100;
+
+  // Debounced POST to persist on server
+  clearTimeout(volDebounce);
+  volDebounce = setTimeout(() => {
+    fetch(`${apiBase}/volume`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({volume: target}),
+    }).catch(() => {});
+  }, 150);
+});
+volSlider.addEventListener("change", () => { volDragging = false; });
+const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome|Chromium/.test(navigator.userAgent);
+const streamUrl = isSafari
+  ? `http://${host}:8000/dynamicradio.mp3`
+  : `http://${host}:8000/dynamicradio`;
+
+btn.addEventListener("click", () => {
+  if (player.paused) {
+    player.src = streamUrl;
+    player.play();
+    btn.textContent = "\u23F8";
+    btn.classList.add("playing");
+  } else {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+    stopWatchdog();
+    clearTimeout(reconnectTimer);
+    reconnectAttempts = 0;
+    btn.textContent = "\u25B6";
+    btn.classList.remove("playing");
+  }
+});
+// Auto-reconnect on stream interruption
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+let lastTime = 0;
+let watchdogId = null;
+const MAX_RECONNECT_DELAY = 30000;
+
+function reconnect() {
+  if (player.paused && !btn.classList.contains("playing")) return;
+  clearTimeout(reconnectTimer);
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
+  reconnectAttempts++;
+  document.getElementById("status").textContent = `Reconnecting in ${Math.round(delay/1000)}s...`;
+  reconnectTimer = setTimeout(() => {
+    player.src = streamUrl + (streamUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
+    player.play().catch(() => reconnect());
+  }, delay);
+}
+
+// Watchdog: detect when currentTime stops advancing while playing
+function startWatchdog() {
+  stopWatchdog();
+  lastTime = player.currentTime;
+  watchdogId = setInterval(() => {
+    if (player.paused || !btn.classList.contains("playing")) return;
+    if (player.currentTime === lastTime) {
+      reconnect();
+    }
+    lastTime = player.currentTime;
+  }, 5000);
+}
+
+function stopWatchdog() {
+  clearInterval(watchdogId);
+  watchdogId = null;
+}
+
+player.addEventListener("error", () => {
+  if (!streamUrl.endsWith(".mp3") && reconnectAttempts === 0) {
+    player.src = `http://${host}:8000/dynamicradio.mp3`;
+    player.play().catch(() => reconnect());
+  } else {
+    reconnect();
+  }
+});
+
+player.addEventListener("playing", () => {
+  reconnectAttempts = 0;
+  clearTimeout(reconnectTimer);
+  startWatchdog();
+});
+
+function updateUI(d) {
+  if ("current_track" in d) {
+    const t = d.current_track;
+    if (t) {
+      document.getElementById("track").textContent = t.name || "Unknown";
+      document.getElementById("artist").textContent = t.artist || "";
+      document.getElementById("album").textContent = t.album || "";
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: t.name || "Unknown",
+          artist: t.artist || "",
+          album: t.album || "Dynamic Radio",
+        });
+      }
+    } else {
+      document.getElementById("track").textContent = d.idle ? "Idle" : "Playing";
+      document.getElementById("artist").textContent = "";
+      document.getElementById("album").textContent = "";
+    }
+  }
+  if (d.current_block) {
+    document.getElementById("mood").textContent =
+      `${d.current_block.mood || ""} — ${d.current_block.description || ""}`;
+    const genres = (d.current_block.genres || []).join(", ");
+    const bpm = d.current_block.bpm_range
+      ? `${d.current_block.bpm_range[0]}–${d.current_block.bpm_range[1]} BPM`
+      : "";
+    document.getElementById("meta").textContent =
+      [genres, bpm].filter(Boolean).join(" | ");
+  }
+  // Sync volume: adopt server value if it's newer than our last local change
+  if (d.volume !== undefined && d.volume_ts) {
+    const serverTs = new Date(d.volume_ts).getTime();
+    if (!volDragging && serverTs > localVolTs) {
+      volSlider.value = d.volume;
+      volValue.textContent = d.volume;
+      player.volume = d.volume / 100;
+      localVolTs = serverTs;
+    }
+  }
+  if (d.time_remaining !== undefined) {
+    const remaining = d.time_remaining > 0
+      ? `${Math.floor(d.time_remaining / 60)}:${String(Math.floor(d.time_remaining % 60)).padStart(2, "0")} remaining`
+      : "";
+    document.getElementById("status").textContent =
+      [d.state, remaining].filter(Boolean).join(" | ");
+  }
+  // Upcoming queue
+  const upEl = document.getElementById("upcoming");
+  const upSection = document.getElementById("upcoming-section");
+  if (d.upcoming && d.upcoming.length > 0) {
+    upSection.style.display = "";
+    upEl.innerHTML = d.upcoming.map(t =>
+      `<div class="tracklist-item"><span class="tl-name">${t.name}</span> <span class="tl-artist">— ${t.artist}</span></div>`
+    ).join("");
+  } else if (d.upcoming) {
+    upSection.style.display = "none";
+  }
+  // Recent history
+  const histEl = document.getElementById("history");
+  const histSection = document.getElementById("history-section");
+  if (d.recent_history && d.recent_history.length > 0) {
+    histSection.style.display = "";
+    histEl.innerHTML = d.recent_history.map(t =>
+      `<div class="tracklist-item"><span class="tl-name">${t.name}</span> <span class="tl-artist">— ${t.artist}</span></div>`
+    ).join("");
+  } else if (d.recent_history) {
+    histSection.style.display = "none";
+  }
+}
+
+async function poll() {
+  try {
+    const r = await fetch(`${apiBase}/status`);
+    updateUI(await r.json());
+  } catch (e) {
+    document.getElementById("status").textContent = "Daemon unreachable";
+  }
+}
+
+// WebSocket for instant updates
+let ws = null;
+let wsRetry = 0;
+let pollInterval = null;
+
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.onopen = () => {
+    wsRetry = 0;
+    // Slow down polling — WS handles events, polling keeps timer ticking
+    clearInterval(pollInterval);
+    pollInterval = setInterval(poll, 15000);
+  };
+  ws.onmessage = (e) => {
+    try { updateUI(JSON.parse(e.data)); } catch {}
+  };
+  ws.onclose = () => {
+    ws = null;
+    // Resume fast polling
+    clearInterval(pollInterval);
+    pollInterval = setInterval(poll, 5000);
+    // Reconnect with backoff
+    const delay = Math.min(1000 * Math.pow(2, wsRetry), 30000);
+    wsRetry++;
+    setTimeout(connectWS, delay);
+  };
+}
+
+poll();
+pollInterval = setInterval(poll, 5000);
+connectWS();
+</script>
+</body>
+</html>

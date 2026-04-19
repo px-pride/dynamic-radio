@@ -1,0 +1,13 @@
+[Unit]
+Description=Icecast server for Dynamic Radio
+After=network.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/mkdir -p /tmp/icecast
+ExecStart=/usr/bin/icecast -c %h/.config/dynamic-radio/icecast.xml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

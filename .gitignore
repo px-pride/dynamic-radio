@@ -1,0 +1,44 @@
+# INVERTED / ALLOWLIST-STYLE GITIGNORE
+#
+# This gitignore is inverted: everything is ignored by default, and only
+# explicitly-allowlisted paths are eligible to be tracked. The goal is
+# to minimize the risk of a rogue agent (or human) accidentally staging
+# sensitive data, runtime state, build artifacts, or personal scratch
+# files.
+#
+# To track a new top-level path, add a `!/name` negation below. To add
+# a tracked file inside an otherwise-ignored subtree (like .claude/),
+# negate each parent directory first, then the target.
+
+# --- Ignore everything at the repo root ---
+/*
+
+# --- Allowlisted top-level directories ---
+!/deploy/
+!/prompts/
+!/src/
+!/tests/
+
+# --- Allowlisted top-level files ---
+!/.gitignore
+!/.gitmodules
+!/.python-version
+!/DESIGN.md
+!/README.md
+!/RECORDS.md
+!/pyproject.toml
+!/uv.lock
+
+# --- .claude/: track only commands/, hide runtime state ---
+!/.claude/
+/.claude/*
+!/.claude/commands/
+
+# --- Build / cache artifacts anywhere in the tree ---
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.venv/
+**/dist/
+**/build/
+**/target/

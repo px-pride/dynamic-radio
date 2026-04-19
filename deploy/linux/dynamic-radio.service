@@ -1,0 +1,18 @@
+[Unit]
+Description=Dynamic Radio daemon
+After=network.target dynamic-radio-icecast.service pipewire.service pipewire-pulse.service
+Requires=dynamic-radio-icecast.service
+Wants=pipewire.service pipewire-pulse.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/px-projects/dynamic-radio
+ExecStart=%h/px-projects/dynamic-radio/.venv/bin/dynamic-radio --stream
+Restart=on-failure
+RestartSec=10
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+Environment=AXI_TRIGGER_URL=http://127.0.0.1:8199/v1/trigger
+EnvironmentFile=%h/.config/dynamic-radio/secrets.env
+
+[Install]
+WantedBy=default.target

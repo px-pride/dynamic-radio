@@ -260,7 +260,7 @@ async def handle_search(request: web.Request) -> web.Response:
         for t in tracks:
             info = {
                 "tidal_id": t.id,
-                "name": t.name,
+                "name": t.full_name,
                 "artist": t.artist.name if hasattr(t.artist, "name") else str(t.artist),
                 "album": t.album.name if hasattr(t, "album") and t.album else None,
                 "duration": t.duration if hasattr(t, "duration") else None,

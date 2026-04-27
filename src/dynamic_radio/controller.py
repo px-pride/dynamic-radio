@@ -149,7 +149,7 @@ class DJController:
         track_info = self._cache_tidal_track(track)
         self._current_track = track_info
 
-        return f"▶️ Playing: **{track.name}** — {track.artist.name}\n(Dynamic Radio paused, `/dj resume` to return)"
+        return f"▶️ Playing: **{track.full_name}** — {track.artist.name}\n(Dynamic Radio paused, `/dj resume` to return)"
 
     def _cmd_queue(self, query: str) -> str:
         """Search Tidal and append to playlist."""
@@ -174,7 +174,7 @@ class DJController:
         self.player.append_url(url)
         self._cache_tidal_track(track)
 
-        return f"➕ Queued: **{track.name}** — {track.artist.name}"
+        return f"➕ Queued: **{track.full_name}** — {track.artist.name}"
 
     def _cmd_skip(self, _arg: str) -> str:
         """Skip current track."""
@@ -290,7 +290,7 @@ class DJController:
         """Cache a tidalapi Track object into the DB and return a dict."""
         info = {
             "tidal_id": track.id,
-            "name": track.name,
+            "name": track.full_name,
             "artist": track.artist.name if hasattr(track.artist, "name") else str(track.artist),
             "album": track.album.name if hasattr(track, "album") and track.album else None,
             "bpm": getattr(track, "bpm", None),

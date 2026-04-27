@@ -163,6 +163,7 @@ class TestPlay:
         mock_track = MagicMock()
         mock_track.id = 12345
         mock_track.name = "Cool Track"
+        mock_track.full_name = "Cool Track"
         mock_track.artist.name = "Cool Artist"
         mock_track.album.name = "Cool Album"
         mock_track.duration = 240
@@ -199,6 +200,7 @@ class TestQueue:
         mock_track = MagicMock()
         mock_track.id = 99
         mock_track.name = "Queued Song"
+        mock_track.full_name = "Queued Song"
         mock_track.artist.name = "Queue Artist"
         mock_track.album.name = "Album"
         mock_track.duration = 180
@@ -371,6 +373,7 @@ class TestHelpers:
         mock_track = MagicMock()
         mock_track.id = 555
         mock_track.name = "Cached"
+        mock_track.full_name = "Cached"
         mock_track.artist.name = "Cache Artist"
         mock_track.album.name = "Cache Album"
         mock_track.duration = 300

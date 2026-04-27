@@ -123,6 +123,7 @@ class TestTick:
         mock_track = MagicMock()
         mock_track.id = 5555
         mock_track.name = "Test Track"
+        mock_track.full_name = "Test Track"
         mock_track.artist.name = "Test Artist"
         mock_track.album.name = "Test Album"
         mock_track.duration = 240
@@ -163,6 +164,7 @@ class TestTick:
         mock_track = MagicMock()
         mock_track.id = 6666
         mock_track.name = "Next Track"
+        mock_track.full_name = "Next Track"
         mock_track.artist.name = "Next Artist"
         mock_track.album.name = "Next Album"
         mock_track.duration = 200

@@ -340,6 +340,7 @@ class TestPlayerController:
         mock_track = MagicMock()
         mock_track.id = 9999
         mock_track.name = "Integration Track"
+        mock_track.full_name = "Integration Track"
         mock_track.artist.name = "Test Artist"
         mock_track.album.name = "Test Album"
         mock_track.duration = 3

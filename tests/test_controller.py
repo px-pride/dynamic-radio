@@ -349,9 +349,10 @@ class TestVolume:
         assert "65%" in result
 
     def test_volume_set(self, controller, mock_player):
+        controller.on_volume = MagicMock()
         result = controller._cmd_volume("42")
-        mock_player.set_volume.assert_called_once_with(42)
-        assert "42%" in result
+        controller.on_volume.assert_called_once_with(42)
+        assert "42" in result
 
     def test_volume_invalid(self, controller):
         result = controller._cmd_volume("loud")

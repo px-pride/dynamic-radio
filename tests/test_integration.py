@@ -141,6 +141,45 @@ SAMPLE_TRACKS = [
         "stem_ready": False,
         "genres": "ambient,drone",
     },
+    {
+        "tidal_id": 1006,
+        "name": "Slow River",
+        "artist": "Riverbed",
+        "album": "Currents",
+        "bpm": 90,
+        "key": "G",
+        "key_scale": "minor",
+        "duration": 320,
+        "dj_ready": False,
+        "stem_ready": False,
+        "genres": "ambient,downtempo",
+    },
+    {
+        "tidal_id": 1007,
+        "name": "Hazy Afternoon",
+        "artist": "Lofi Anchor",
+        "album": "Slow Days",
+        "bpm": 105,
+        "key": "F",
+        "key_scale": "major",
+        "duration": 220,
+        "dj_ready": False,
+        "stem_ready": False,
+        "genres": "lo-fi,downtempo",
+    },
+    {
+        "tidal_id": 1008,
+        "name": "Soft Embers",
+        "artist": "Glow",
+        "album": "Smolder",
+        "bpm": 92,
+        "key": "D",
+        "key_scale": "major",
+        "duration": 260,
+        "dj_ready": True,
+        "stem_ready": False,
+        "genres": "ambient,downtempo",
+    },
 ]
 
 SAMPLE_PLAN = {
@@ -379,6 +418,14 @@ class TestPlayerController:
         db = tmp_env["db"]
         controller = DJController(player=player, db=db, tidal_session=None)
 
+        def _on_volume(v):
+            if v is None:
+                return {"volume": int(player.get_status()["volume"])}
+            player.set_volume(v)
+            return {"volume": v}
+
+        controller.on_volume = _on_volume
+
         result = controller.handle_command("volume")
         assert "50%" in result  # initial volume
 
@@ -488,23 +535,53 @@ class TestFullCycle:
             assert next_track["tidal_id"] != selected["tidal_id"]
 
     def test_consecutive_tracks_respect_key_and_bpm(self, tmp_env):
-        """Verify that two consecutive selections maintain harmonic compatibility."""
+        """Verify that two consecutive selections maintain harmonic compatibility.
+
+        Uses a tight cluster of 6 candidates (BPM 118-124, all Camelot 8A/7A/9A/8B
+        — mutually compatible) so the strict filter yields ≥5 viable candidates
+        and the strict ±15 BPM + key-compat constraints are enforced (no fallback).
+        """
         db = tmp_env["db"]
-        for t in SAMPLE_TRACKS:
+        candidates = [
+            {"tidal_id": 2001, "name": "T1", "artist": "X1", "album": "A",
+             "bpm": 122, "key": "A", "key_scale": "minor",  # 8A
+             "duration": 240, "dj_ready": True, "stem_ready": False,
+             "genres": "deep house"},
+            {"tidal_id": 2002, "name": "T2", "artist": "X2", "album": "A",
+             "bpm": 120, "key": "D", "key_scale": "minor",  # 7A
+             "duration": 240, "dj_ready": True, "stem_ready": False,
+             "genres": "deep house"},
+            {"tidal_id": 2003, "name": "T3", "artist": "X3", "album": "A",
+             "bpm": 124, "key": "E", "key_scale": "minor",  # 9A
+             "duration": 240, "dj_ready": True, "stem_ready": False,
+             "genres": "deep house"},
+            {"tidal_id": 2004, "name": "T4", "artist": "X4", "album": "A",
+             "bpm": 118, "key": "C", "key_scale": "major",  # 8B
+             "duration": 240, "dj_ready": True, "stem_ready": False,
+             "genres": "deep house"},
+            {"tidal_id": 2005, "name": "T5", "artist": "X5", "album": "A",
+             "bpm": 121, "key": "A", "key_scale": "minor",  # 8A
+             "duration": 240, "dj_ready": True, "stem_ready": False,
+             "genres": "deep house"},
+            {"tidal_id": 2006, "name": "T6", "artist": "X6", "album": "A",
+             "bpm": 119, "key": "D", "key_scale": "minor",  # 7A
+             "duration": 240, "dj_ready": True, "stem_ready": False,
+             "genres": "deep house"},
+        ]
+        for t in candidates:
             db.upsert_track(t)
 
-        block = {"bpm_range": [80, 130], "genres": ["ambient", "deep house"], "energy": 0.4}
+        block = {"bpm_range": [115, 130], "genres": ["deep house"], "energy": 0.45}
 
-        first = select_track(SAMPLE_TRACKS, block, db, previous_track=None)
+        first = select_track(candidates, block, db, previous_track=None)
         assert first is not None
 
         db.log_play(first["tidal_id"])
 
-        second = select_track(SAMPLE_TRACKS, block, db, previous_track=first)
-        if second is not None:
-            # BPM should be within ±15 of first
-            if first.get("bpm") and second.get("bpm"):
-                assert abs(first["bpm"] - second["bpm"]) <= 15
+        second = select_track(candidates, block, db, previous_track=first)
+        assert second is not None
+        assert second["tidal_id"] != first["tidal_id"]
+        assert abs(first["bpm"] - second["bpm"]) <= 15
 
     def test_history_command_after_plays(self, tmp_env, player):
         """Controller history shows tracks after playing through the cycle."""

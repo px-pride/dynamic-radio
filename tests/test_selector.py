@@ -45,6 +45,34 @@ BLOCK = {
 }
 
 
+def make_decoys(n: int = 5, *, key: str = "C", key_scale: str = "major"):
+    """Generate n viable decoy tracks for use alongside a 'target' track in
+    filter tests. Decoys all sit in BLOCK's BPM range, share the same Camelot
+    code (so they pass key-compat with each other and with any prev_track that
+    is also key-compatible to that code), have unique tidal_ids in 100..199 (so
+    they don't collide with target ids 1-99), and are never played or disliked.
+    Strict filtering returns these 5 → fallback paths in filter_candidates do
+    not trigger. The target track being asserted-against is the only candidate
+    that should be filtered out.
+    """
+    return [
+        {
+            "tidal_id": 100 + i,
+            "name": f"Decoy {i}",
+            "artist": f"DecoyArtist{i}",
+            "album": "Decoys",
+            "bpm": 118 + i,  # all within BLOCK [110,128]
+            "key": key,
+            "key_scale": key_scale,
+            "duration": 240,
+            "dj_ready": False,
+            "stem_ready": False,
+            "genres": "minimal,deep house",
+        }
+        for i in range(n)
+    ]
+
+
 # --- Camelot wheel tests ---
 
 
@@ -92,12 +120,14 @@ def db(tmp_path: Path) -> TrackDB:
 
 class TestFilter:
     def test_filters_recently_played(self, db: TrackDB):
-        track = make_track(tidal_id=1, bpm=120)
-        db.upsert_track(track)
+        target = make_track(tidal_id=1, bpm=120)
+        db.upsert_track(target)
         db.log_play(1)
 
-        result = filter_candidates([track], db, BLOCK)
-        assert len(result) == 0
+        result = filter_candidates([target] + make_decoys(5), db, BLOCK)
+        ids = [t["tidal_id"] for t in result]
+        assert 1 not in ids
+        assert len(result) == 5
 
     def test_filters_recent_artist(self, db: TrackDB):
         played = make_track(tidal_id=1, artist="SameArtist", bpm=120)
@@ -105,36 +135,55 @@ class TestFilter:
         db.upsert_track(played)
         db.log_play(1)
 
-        result = filter_candidates([candidate], db, BLOCK)
-        assert len(result) == 0
+        result = filter_candidates([candidate] + make_decoys(5), db, BLOCK)
+        ids = [t["tidal_id"] for t in result]
+        assert 2 not in ids
+        assert len(result) == 5
 
     def test_filters_disliked(self, db: TrackDB):
-        track = make_track(tidal_id=1, bpm=120)
+        target = make_track(tidal_id=1, bpm=120)
         db.dislike(1)
 
-        result = filter_candidates([track], db, BLOCK)
-        assert len(result) == 0
+        result = filter_candidates([target] + make_decoys(5), db, BLOCK)
+        ids = [t["tidal_id"] for t in result]
+        assert 1 not in ids
+        assert len(result) == 5
 
     def test_filters_bpm_out_of_range(self, db: TrackDB):
-        track = make_track(tidal_id=1, bpm=80)  # Below block range 110-128
-        result = filter_candidates([track], db, BLOCK)
-        assert len(result) == 0
+        target = make_track(tidal_id=1, bpm=80)  # Below block range 110-128
+        result = filter_candidates([target] + make_decoys(5), db, BLOCK)
+        ids = [t["tidal_id"] for t in result]
+        assert 1 not in ids
+        assert len(result) == 5
 
     def test_filters_bpm_too_far_from_previous(self, db: TrackDB):
-        track = make_track(tidal_id=1, bpm=120)
-        prev = make_track(tidal_id=99, bpm=100)  # 20 BPM away > ±15
-
-        result = filter_candidates([track], db, BLOCK, previous_track=prev)
-        assert len(result) == 0
+        # prev BPM 100; target at 120 is 20 away (> ±15) — strict-rejected.
+        # Decoys (BPM 118-122) are all within ±15 of prev=100? No, 118-100=18.
+        # Set prev at 115 so decoys (118-122) sit within ±15 of prev,
+        # and target at 135 (135-115=20) is still > ±15 away.
+        target = make_track(tidal_id=1, bpm=135)
+        prev = make_track(tidal_id=99, bpm=115)
+        result = filter_candidates(
+            [target] + make_decoys(5), db, BLOCK, previous_track=prev
+        )
+        ids = [t["tidal_id"] for t in result]
+        assert 1 not in ids
+        assert len(result) == 5
 
     def test_filters_incompatible_key(self, db: TrackDB):
-        track = make_track(tidal_id=1, bpm=120, key="C", key_scale="major")  # 8B
-        prev = make_track(tidal_id=99, bpm=118, key="E", key_scale="minor")  # 9A
-
-        result = filter_candidates([track], db, BLOCK, previous_track=prev)
-        # 8B and 9A: number differs by 1 but letters differ too → check
-        # 8B compat with 9A: different letter AND different number → incompatible
-        assert len(result) == 0
+        # target key F# minor → Camelot 11A; prev key C major → 8B.
+        # 11A vs 8B: different letter AND number diff 3 → incompatible.
+        # Decoys are C major (8B) → compat with prev (8B ↔ 8B same).
+        target = make_track(
+            tidal_id=1, bpm=120, key="F#", key_scale="minor"
+        )
+        prev = make_track(tidal_id=99, bpm=118, key="C", key_scale="major")
+        result = filter_candidates(
+            [target] + make_decoys(5), db, BLOCK, previous_track=prev
+        )
+        ids = [t["tidal_id"] for t in result]
+        assert 1 not in ids
+        assert len(result) == 5
 
     def test_passes_good_candidate(self, db: TrackDB):
         track = make_track(tidal_id=1, bpm=120, key="C", key_scale="major")
@@ -204,11 +253,15 @@ class TestSelection:
         result = select_track([], BLOCK, db)
         assert result is None
 
-    def test_select_returns_none_when_all_filtered(self, db: TrackDB):
-        # All tracks have BPM way out of range
+    def test_select_falls_back_when_all_out_of_range(self, db: TrackDB):
+        """Music never stops: when all candidates are out of the block's BPM
+        range and strict filtering yields nothing, the selector falls back via
+        _base_filter and last-resort to return *some* candidate. Asserting we
+        return None here would be wrong — it would mean silence."""
         candidates = [make_track(tidal_id=i, bpm=60) for i in range(5)]
         result = select_track(candidates, BLOCK, db)
-        assert result is None
+        assert result is not None
+        assert result["tidal_id"] in {t["tidal_id"] for t in candidates}
 
     def test_select_avoids_recently_played(self, db: TrackDB):
         candidates = [

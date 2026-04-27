@@ -107,10 +107,13 @@ class TestTick:
         assert daemon.controller.state == DJState.OVERRIDE
 
     @pytest.mark.asyncio
+    @patch("dynamic_radio.genre_lookup._rate_limit")
+    @patch("musicbrainzngs.search_recordings")
     @patch("dynamic_radio.daemon.load_plan")
     @patch("dynamic_radio.daemon.get_current_block")
     async def test_tick_active_idle_plays_next(
-        self, mock_block, mock_plan, daemon, mock_player, mock_tidal, mock_db
+        self, mock_block, mock_plan, mock_mb_search, mock_rate_limit,
+        daemon, mock_player, mock_tidal, mock_db
     ):
         daemon.controller.state = DJState.ACTIVE
         daemon._plan_date = date.today()
@@ -119,7 +122,20 @@ class TestTick:
         mock_plan.return_value = SAMPLE_PLAN
         mock_block.return_value = SAMPLE_PLAN["blocks"][0]
 
-        # Set up Tidal search to return a track
+        # Synthetic MusicBrainz recording with ISRC + matching genre tag.
+        mock_mb_search.return_value = {
+            "recording-list": [
+                {
+                    "isrc-list": ["TEST00000001"],
+                    "tag-list": [
+                        {"name": "ambient", "count": "5"},
+                        {"name": "downtempo", "count": "3"},
+                    ],
+                }
+            ]
+        }
+
+        # ISRC → Tidal track lookup mock.
         mock_track = MagicMock()
         mock_track.id = 5555
         mock_track.name = "Test Track"
@@ -132,12 +148,10 @@ class TestTick:
         mock_track.key_scale = "minor"
         mock_track.dj_ready = False
         mock_track.stem_ready = False
+        mock_track.isrc = "TEST00000001"
+        mock_tidal.get_tracks_by_isrc.return_value = [mock_track]
 
-        mock_results = MagicMock()
-        mock_results.tracks = [mock_track]
-        mock_tidal.search.return_value = mock_results
-
-        # Mock the stream URL fetch
+        # Stream URL fetch downstream of selection.
         mock_tidal_track = MagicMock()
         mock_tidal_track.get_url.return_value = "https://tidal.example/stream"
         mock_tidal.track.return_value = mock_tidal_track
@@ -148,10 +162,13 @@ class TestTick:
         mock_db.log_play.assert_called()
 
     @pytest.mark.asyncio
+    @patch("dynamic_radio.genre_lookup._rate_limit")
+    @patch("musicbrainzngs.search_recordings")
     @patch("dynamic_radio.daemon.load_plan")
     @patch("dynamic_radio.daemon.get_current_block")
     async def test_tick_active_prefetches_near_end(
-        self, mock_block, mock_plan, daemon, mock_player, mock_tidal, mock_db
+        self, mock_block, mock_plan, mock_mb_search, mock_rate_limit,
+        daemon, mock_player, mock_tidal, mock_db
     ):
         daemon.controller.state = DJState.ACTIVE
         daemon._plan_date = date.today()
@@ -160,6 +177,18 @@ class TestTick:
 
         mock_plan.return_value = SAMPLE_PLAN
         mock_block.return_value = SAMPLE_PLAN["blocks"][0]
+
+        mock_mb_search.return_value = {
+            "recording-list": [
+                {
+                    "isrc-list": ["TEST00000002"],
+                    "tag-list": [
+                        {"name": "ambient", "count": "4"},
+                        {"name": "downtempo", "count": "2"},
+                    ],
+                }
+            ]
+        }
 
         mock_track = MagicMock()
         mock_track.id = 6666
@@ -173,10 +202,8 @@ class TestTick:
         mock_track.key_scale = "minor"
         mock_track.dj_ready = False
         mock_track.stem_ready = False
-
-        mock_results = MagicMock()
-        mock_results.tracks = [mock_track]
-        mock_tidal.search.return_value = mock_results
+        mock_track.isrc = "TEST00000002"
+        mock_tidal.get_tracks_by_isrc.return_value = [mock_track]
 
         mock_tidal_track = MagicMock()
         mock_tidal_track.get_url.return_value = "https://tidal.example/next"
@@ -209,9 +236,12 @@ class TestEnsurePlan:
         assert daemon._plan_date == date.today()
 
     @pytest.mark.asyncio
+    @patch("dynamic_radio.daemon.save_plan")
     @patch("dynamic_radio.daemon.default_plan")
     @patch("dynamic_radio.daemon.load_plan")
-    async def test_uses_default_plan_when_missing(self, mock_load, mock_default, daemon):
+    async def test_uses_default_plan_when_missing(
+        self, mock_load, mock_default, mock_save, daemon
+    ):
         mock_load.return_value = None
         mock_default.return_value = SAMPLE_PLAN
         await daemon._ensure_plan()

@@ -8,6 +8,7 @@ Configure in ~/axi-user-data/mcp_servers.json:
 
 import asyncio
 import json
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -16,14 +17,17 @@ from typing import Any
 from mcp import stdio_server, types
 from mcp.server import Server
 
-DAEMON_URL = "http://127.0.0.1:8420"
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8420
 
 # Tidal searches can take 30-60s via MusicBrainz ISRC cross-referencing
 REQUEST_TIMEOUT = 120
 
 
 def _daemon_url() -> str:
-    return DAEMON_URL
+    host = os.environ.get("DYNAMIC_RADIO_HOST", DEFAULT_HOST)
+    port = os.environ.get("DYNAMIC_RADIO_PORT", str(DEFAULT_PORT))
+    return f"http://{host}:{port}"
 
 
 def _http_get(path: str) -> dict[str, Any]:

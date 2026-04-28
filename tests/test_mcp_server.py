@@ -68,11 +68,25 @@ def fake_daemon():
     srv.shutdown()
 
 
+EXPECTED_TOOL_NAMES = {
+    "dj_status",
+    "dj_command",
+    "dj_health",
+    "dj_upload_plan",
+    "dj_get_plan",
+    "dj_search",
+    "dj_feedback",
+    "dj_queue_tracks",
+    "dj_mood",
+    "dj_clear_queue",
+}
+
+
 @pytest.mark.asyncio
-async def test_list_tools_returns_three():
+async def test_list_tools_returns_full_set():
     tools = await list_tools()
     names = {t.name for t in tools}
-    assert names == {"dj_status", "dj_command", "dj_health"}
+    assert names == EXPECTED_TOOL_NAMES
 
 
 @pytest.mark.asyncio
@@ -192,7 +206,7 @@ def test_mcp_stdio_initialize():
 
 
 def test_mcp_stdio_list_tools():
-    """Server lists all 3 DJ tools over stdio."""
+    """Server lists the full DJ tool set over stdio."""
     init_msg = _jsonrpc("initialize", {
         "protocolVersion": "2024-11-05",
         "capabilities": {},
@@ -207,7 +221,7 @@ def test_mcp_stdio_list_tools():
     tools_resp = next((r for r in responses if r.get("id") == 2), None)
     assert tools_resp is not None, f"No tools/list response found in {responses}"
     tool_names = {t["name"] for t in tools_resp["result"]["tools"]}
-    assert tool_names == {"dj_status", "dj_command", "dj_health"}
+    assert tool_names == EXPECTED_TOOL_NAMES
 
 
 def test_mcp_stdio_call_tool(fake_daemon):
